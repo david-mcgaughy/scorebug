@@ -1,0 +1,12 @@
+{
+  "homeName": "Boise City",
+  "homeLogo": "logos/bclogo.png",
+  "homeRecord": "1-0",
+  "opponentName": "Tyrone",
+  "opponentLogo": "logos/school_logo.png",
+  "opponentRecord": "0-0",
+  "gameLevel": "BOYS VARSITY",
+  "youtubeHandle": "@bcpsd",
+  "accentColor": "#FE5C00",
+  "backgroundColor": "rgba(20,20,20,0.98)"
+}

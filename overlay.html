@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Boise City Wildcats - OCR Production</title>
+<script src="obs-websocket.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+    /* === CONFIGURATION === */
+    :root {
+        --accent-color: #FE5C00; 
+        --dark-bg: rgba(20,20,20,0.98); 
+        --bg-color: linear-gradient(to bottom, var(--dark-bg), #000); 
+        --text-color: #fff;
+        --secondary-text-color: #bbb;
+        --border-color: rgba(255, 255, 255, 0.15);
+        --yt-red: #FF0000;
+    }
+
+    body { margin: 0; background: transparent; overflow: hidden; font-family: 'Roboto Condensed', sans-serif; color: var(--text-color); }
+
+    /* === LAYOUT === */
+    .overlay-container {
+        position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+        width: 1300px; height: 110px; display: flex; justify-content: center;
+        overflow: visible; 
+    }
+
+    /* === YOUTUBE CTA === */
+    .yt-cta {
+        position: absolute; bottom: 108px; left: 50%;
+        transform: translateX(-50%) translateY(100%); 
+        width: 420px; background: var(--dark-bg); color: var(--text-color); 
+        border: 2px solid var(--border-color); border-bottom: none; 
+        border-top-left-radius: 15px; border-top-right-radius: 15px;
+        box-shadow: 0 -5px 25px rgba(0,0,0,0.6); padding: 10px 0;
+        display: flex; align-items: center; justify-content: center; gap: 15px;
+        opacity: 0; z-index: 5; transition: transform 0.5s ease-out, opacity 0.5s ease-out;
+    }
+    .yt-cta.visible { transform: translateX(-50%) translateY(0); opacity: 1; }
+    .yt-icon-group { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.2rem; text-transform: uppercase; }
+    .yt-circle { width: 34px; height: 34px; background: var(--accent-color); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #000; font-size: 1.4rem; font-weight: 900; }
+    .yt-sub-btn { background: var(--yt-red); color: #fff; padding: 5px 12px; border-radius: 6px; font-size: 1.1rem; font-weight: 800; }
+    .divider { width: 2px; height: 25px; background: rgba(255,255,255,0.15); }
+    #yt-channel-name { white-space: nowrap; transition: font-size 0.3s; }
+
+    /* === SCOREBOARD === */
+    .score-section {
+        width: 100%; height: 100%; background: var(--bg-color);
+        border: 2px solid var(--border-color); border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        display: flex; align-items: center; justify-content: space-between;
+        position: relative; z-index: 20; overflow: hidden; backdrop-filter: blur(4px);
+        padding: 0 10px; box-sizing: border-box; 
+    }
+    .team-identity { flex: 1; display: flex; align-items: center; height: 100%; }
+    .team-identity.home { justify-content: flex-start; }
+    .team-identity.away { justify-content: flex-end; }
+    
+    .logo-box { height: 100%; width: 130px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); padding: 0 15px; }
+    .team-logo { height: 85%; width: auto; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 2px #fff); }
+    
+    .text-box { display: flex; flex-direction: column; justify-content: center; margin: 0 20px; }
+    .team-identity.away .text-box { align-items: flex-end; }
+    .team-name { font-size: 2.4rem; font-weight: 800; text-transform: uppercase; line-height: 0.9; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+    .team-meta-row { display: flex; align-items: center; gap: 15px; margin-top: 6px; }
+    .team-record { font-size: 1rem; color: var(--secondary-text-color); font-weight: 600; text-transform: uppercase; }
+
+    .foul-wrapper { display: flex; flex-direction: column; justify-content: center; }
+    .foul-label { font-size: 0.65rem; color: #888; font-weight: 700; text-transform: uppercase; margin-bottom: 2px; }
+    .foul-container { display: flex; gap: 4px; }
+    .foul-dot { width: 10px; height: 10px; border-radius: 50%; background-color: #333; border: 1px solid rgba(255,255,255,0.1); }
+    .foul-dot.active { background-color: var(--accent-color); border: none; box-shadow: 0 0 4px rgba(0,0,0,0.8); }
+
+    .center-cluster { display: flex; align-items: center; height: 100%; background: rgba(255,255,255,0.03); border-left: 1px solid var(--border-color); border-right: 1px solid var(--border-color); padding: 0 15px; }
+    .score-wrapper { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 110px; }
+    .score { font-size: 4.5rem; font-weight: 800; line-height: 0.9; font-variant-numeric: tabular-nums; transition: transform 0.2s, color 0.3s; }
+    .score.leading { color: var(--accent-color); }
+    .bonus-badge { font-size: 0.7rem; font-weight: 800; background: var(--accent-color); color: #000; padding: 2px 8px; border-radius: 4px; margin-top: 4px; opacity: 0; }
+    .bonus-badge.active { opacity: 1; }
+
+    .clock-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 160px; margin: 0 5px; }
+    .game-time { font-size: 2.6rem; font-weight: 700; color: #eee; line-height: 1; text-shadow: 0 2px 3px rgba(0,0,0,0.8); }
+    .info-bar { margin-top: 4px; height: 20px; display: flex; align-items: center; justify-content: center; width: 100%; position: relative; }
+    .info-slide { position: absolute; width: 100%; text-align: center; opacity: 0; transform: translateY(10px); transition: all 0.5s ease; }
+    .info-slide.active { opacity: 1; transform: translateY(0); }
+    .qtr-badge { background: var(--accent-color); color: #000; padding: 1px 6px; border-radius: 3px; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; }
+    .game-title-text { color: var(--secondary-text-color); font-size: 0.85rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+
+    /* === TICKER === */
+    .ticker-wrapper { position: absolute; top: 15px; left: 12px; width: calc(100% - 24px); z-index: 10; transition: transform 0.8s, opacity 0.3s; opacity: 0; }
+    .ticker-wrapper.active { transform: translateY(95px); opacity: 1; }
+    .ticker-bar { height: 45px; background: var(--dark-bg); border: 1px solid var(--border-color); border-top: none; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; display: flex; align-items: center; backdrop-filter: blur(4px); }
+    .ticker-label { background: #333; color: var(--text-color); font-weight: 700; font-size: 1rem; width: 130px; justify-content: center; height: 100%; display: flex; align-items: center; border-bottom-left-radius: 9px; border-right: 1px solid var(--border-color); }
+    .scroll-window { flex: 1; height: 100%; overflow: hidden; position: relative; display: flex; align-items: center; }
+    #scroll-content { white-space: nowrap; position: absolute; left: 100%; display: flex; align-items: center; }
+    .game-item { display: inline-flex; align-items: center; padding: 0 30px; font-size: 1.2rem; font-weight: 500; border-right: 1px solid var(--border-color); color: #ddd; }
+    .category-tag { font-size: 0.85rem; font-weight: 700; color: var(--text-color); background: #444; padding: 3px 8px; border-radius: 4px; margin-right: 8px; border: 1px solid rgba(255,255,255,0.2); }
+    .state-tag { font-size: 0.95rem; font-weight: 800; color: var(--accent-color); margin-left: 15px; text-transform: uppercase; }
+    .score-hl { color: var(--text-color); font-weight: 800; margin-left: 6px; }
+    .vs-text { font-size: 0.9rem; color: var(--secondary-text-color); font-weight: 600; margin: 0 12px; }
+</style>
+</head>
+<body>
+
+<div class="overlay-container">
+    <div class="yt-cta" id="yt-cta">
+        <div class="yt-icon-group"><span>Like</span><div class="yt-circle">👍</div></div>
+        <div class="divider"></div>
+        <div class="yt-icon-group"><span class="yt-sub-btn">SUBSCRIBE</span><span id="yt-channel-name">@Channel</span></div>
+        <div class="divider"></div>
+        <div class="yt-icon-group"><div class="yt-circle">🔔</div></div>
+    </div>
+
+    <div class="ticker-wrapper" id="ticker-wrapper">
+        <div class="ticker-bar">
+            <div class="ticker-label">SCORES</div>
+            <div class="scroll-window"><div id="scroll-content"><span class="game-item">Loading...</span></div></div>
+        </div>
+    </div>
+
+    <div class="score-section">
+        <div class="team-identity home">
+            <div class="logo-box"><img src="" class="team-logo" id="home-logo" alt="Home"></div>
+            <div class="text-box">
+                <span class="team-name" id="home-name">HOME</span>
+                <div class="team-meta-row">
+                    <div class="foul-wrapper">
+                        <div class="foul-label">Fouls</div>
+                        <div class="foul-container" id="home-foul-container">
+                            <div class="foul-dot"></div><div class="foul-dot"></div><div class="foul-dot"></div><div class="foul-dot"></div><div class="foul-dot"></div>
+                        </div>
+                    </div>
+                    <span class="team-record" id="home-record">0-0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="center-cluster">
+            <div class="score-wrapper home">
+                <div class="score" id="home-score">0</div>
+                <div class="bonus-badge" id="home-bonus">BONUS</div>
+            </div>
+            <div class="clock-container">
+                <span class="game-time" id="game-time">0:00</span>
+                <div class="info-bar">
+                    <div class="info-slide active" id="slide-1"><span class="qtr-badge">PRE</span></div>
+                    <div class="info-slide" id="slide-2"><span class="game-title-text" id="game-title">GAME TIME</span></div>
+                </div>
+            </div>
+            <div class="score-wrapper away">
+                <div class="score" id="away-score">0</div>
+                <div class="bonus-badge" id="away-bonus">BONUS</div>
+            </div>
+        </div>
+
+        <div class="team-identity away">
+            <div class="text-box">
+                <span class="team-name" id="away-name">AWAY</span>
+                <div class="team-meta-row" style="justify-content: flex-end;">
+                    <span class="team-record" id="away-record">0-0</span>
+                    <div class="foul-wrapper">
+                        <div class="foul-label">Fouls</div>
+                        <div class="foul-container" id="away-foul-container">
+                            <div class="foul-dot"></div><div class="foul-dot"></div><div class="foul-dot"></div><div class="foul-dot"></div><div class="foul-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="logo-box">
+                <img src="" class="team-logo" id="away-logo" alt="Away">
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// === CONFIG ===
+const OCR_URL = 'http://localhost:8080/results.json';
+const OBS_PORT = 4455;
+const OBS_PASSWORD = 'ScoreboardRemote'; // MUST MATCH OBS
+const CSV_PATH = 'SkordleScores.csv';
+
+// === STATE ===
+let ocrActive = false;
+let manualOverrideTimer = null; 
+let lastHomeScore = -1;
+let lastAwayScore = -1;
+let obs;
+
+// 1. OBS CONNECTION
+async function initOBS() {
+    if(typeof OBSWebSocket === 'undefined') { setTimeout(initOBS, 500); return; }
+    
+    obs = new OBSWebSocket();
+    try {
+        await obs.connect(`ws://localhost:${OBS_PORT}`, OBS_PASSWORD);
+        
+        obs.on('CustomEvent', (evt) => {
+            const payload = evt.eventData || evt; 
+            if(payload && payload.type === 'MANUAL_SCORE_UPDATE') {
+                triggerManualOverride();
+                updateScoreboard(payload.data);
+            }
+            if(payload && payload.type === 'CONFIG_UPDATE') {
+                applyLiveConfig(payload.data);
+            }
+        });
+    } catch(e) { console.log("OBS WS Error", e); }
+}
+window.addEventListener('load', initOBS);
+
+function triggerManualOverride() {
+    if(manualOverrideTimer) clearTimeout(manualOverrideTimer);
+    ocrActive = false; 
+    manualOverrideTimer = setTimeout(() => { manualOverrideTimer = null; }, 10000);
+}
+
+// 2. APPLY CONFIG
+function applyLiveConfig(cfg) {
+    if(!cfg) return;
+    if(cfg.homeName) document.getElementById('home-name').innerText = cfg.homeName;
+    if(cfg.homeRecord) document.getElementById('home-record').innerText = cfg.homeRecord;
+    if(cfg.opponentName) document.getElementById('away-name').innerText = cfg.opponentName;
+    if(cfg.opponentRecord) document.getElementById('away-record').innerText = cfg.opponentRecord;
+    if(cfg.gameLevel) document.getElementById('game-title').innerText = cfg.gameLevel;
+    if(cfg.youtubeHandle) document.getElementById('yt-channel-name').innerText = cfg.youtubeHandle;
+    
+    if(cfg.homeLogo) document.getElementById('home-logo').src = cfg.homeLogo;
+    if(cfg.opponentLogo) document.getElementById('away-logo').src = cfg.opponentLogo;
+    if(cfg.accentColor) document.documentElement.style.setProperty('--accent-color', cfg.accentColor);
+    if(cfg.backgroundColor) {
+        document.documentElement.style.setProperty('--dark-bg', cfg.backgroundColor);
+        document.documentElement.style.setProperty('--bg-color', `linear-gradient(to bottom, ${cfg.backgroundColor}, #000)`);
+    }
+}
+
+// 3. OCR LOOP
+async function fetchOCR() {
+    if(manualOverrideTimer) return;
+    try {
+        const c = new AbortController();
+        const id = setTimeout(() => c.abort(), 1500);
+        const res = await fetch(OCR_URL, { signal: c.signal });
+        clearTimeout(id);
+        if(res.ok) {
+            const data = await res.json();
+            ocrActive = true;
+            updateScoreboard(data);
+        } else { ocrActive = false; }
+    } catch(e) { ocrActive = false; }
+}
+setInterval(fetchOCR, 200);
+
+// 4. UPDATE SCOREBOARD UI
+function updateScoreboard(data) {
+    if(!data) return;
+    const h = parseInt(data.home_score);
+    const a = parseInt(data.away_score);
+    if(!isNaN(h)) { if(h !== lastHomeScore) { document.getElementById('home-score').innerText = h; lastHomeScore = h; } }
+    if(!isNaN(a)) { if(a !== lastAwayScore) { document.getElementById('away-score').innerText = a; lastAwayScore = a; } }
+    
+    const hEl = document.getElementById('home-score');
+    const aEl = document.getElementById('away-score');
+    hEl.classList.remove('leading'); aEl.classList.remove('leading');
+    if(h > a) hEl.classList.add('leading');
+    if(a > h) aEl.classList.add('leading');
+
+    if(data.clock) document.getElementById('game-time').innerText = data.clock;
+    if(data.period) {
+        let p = String(data.period).toUpperCase();
+        if(p==='1') p='1ST QTR'; if(p==='2') p='2ND QTR'; if(p==='3') p='3RD QTR'; if(p==='4') p='4TH QTR';
+        if(p==='HALF') p='HALF'; if(p==='FINAL') p='FINAL';
+        document.querySelector('#slide-1 .qtr-badge').innerText = p;
+    }
+
+    const hFouls = parseInt(data.home_fouls)||0;
+    const aFouls = parseInt(data.away_fouls)||0;
+    renderFouls('home', hFouls);
+    renderFouls('away', aFouls);
+    toggleBonus('home', aFouls >= 5);
+    toggleBonus('away', hFouls >= 5);
+}
+
+function renderFouls(team, count) {
+    const dots = document.getElementById(`${team}-foul-container`).children;
+    for(let i=0; i<dots.length; i++) {
+        if(i < count) dots[i].classList.add('active');
+        else dots[i].classList.remove('active');
+    }
+}
+function toggleBonus(team, isActive) {
+    const badge = document.getElementById(`${team}-bonus`);
+    if(isActive) badge.classList.add('active'); else badge.classList.remove('active');
+}
+
+// 5. ANIMATIONS & CONFIG LOAD
+async function fetchConfig() {
+    try {
+        const r = await fetch('gameconfig.json?t='+Date.now());
+        if(r.ok) {
+            const c = await r.json();
+            applyLiveConfig(c);
+        }
+    } catch(e) {}
+}
+setTimeout(fetchConfig, 1000);
+
+// YOUTUBE POPUP LOGIC
+const ytCta = document.getElementById('yt-cta');
+function triggerYTPopup() {
+    if(!ytCta) return;
+    ytCta.classList.add('visible');
+    setTimeout(() => ytCta.classList.remove('visible'), 10000); // Hide after 10s
+}
+setTimeout(triggerYTPopup, 5000);        // Show 5s after load
+setInterval(triggerYTPopup, 120000);     // Show every 2 minutes
+
+// INFO BAR SLIDE LOGIC
+setInterval(() => {
+    const s1 = document.getElementById('slide-1');
+    const s2 = document.getElementById('slide-2');
+    if(s1 && s2) {
+        if(s1.classList.contains('active')){ s1.classList.remove('active'); s2.classList.add('active'); } 
+        else { s2.classList.remove('active'); s1.classList.add('active'); }
+    }
+}, 15000); 
+
+// TICKER LOGIC (FILTERS ADDED HERE)
+const recordRegex = /\s*\(?\d+\s*-\s*\d+\)?\s*$/; 
+
+async function runTicker() {
+    try {
+        const r = await fetch(CSV_PATH + '?t=' + Date.now());
+        if(!r.ok) return;
+        const txt = await r.text();
+        const rows = txt.split('\n').slice(1);
+        const html = rows.map(row => {
+            const c = row.split(',').map(s => s.replace(/"/g,'').trim());
+            if(c.length < 6 || !c[5]) return '';
+            
+            // --- FILTER LOGIC ---
+            const state = c[5];
+            const sA = parseInt(c[2]) || 0;
+            const sH = parseInt(c[4]) || 0;
+            
+            // Skip if Starting OR 0-0
+            if(state.toLowerCase() === 'starting') return '';
+            if(sA === 0 && sH === 0) return '';
+            // --------------------
+
+            // Clean Records
+            const away = c[1].replace(recordRegex, '');
+            const home = c[3].replace(recordRegex, '');
+            
+            return `<div class="game-item"><span class="category-tag">${c[0]}</span> ${away} <span class="score-hl">${c[2]}</span> <span class="vs-text">VS</span> ${home} <span class="score-hl">${c[4]}</span> <span class="state-tag">${state}</span></div>`;
+        }).join('');
+        
+        if(html.length > 20) {
+            const w = document.getElementById('ticker-wrapper');
+            const c = document.getElementById('scroll-content');
+            c.innerHTML = html;
+            w.classList.add('active');
+            const dist = c.offsetWidth + w.offsetWidth;
+            c.style.transition = `transform ${dist/100}s linear`;
+            c.style.transform = `translateX(-${dist}px)`;
+            
+            setTimeout(() => {
+                w.classList.remove('active');
+                c.style.transition='none'; c.style.transform='translateX(0)';
+                setTimeout(runTicker, 60000); 
+            }, (dist/100)*1000);
+        } else { setTimeout(runTicker, 10000); }
+    } catch(e) { setTimeout(runTicker, 10000); }
+}
+setTimeout(runTicker, 2000);
+</script>
+</body>
+</html>
