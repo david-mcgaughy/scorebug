@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Wildcats Production Control</title>
+<script src="obs-websocket.min.js"></script>
+<style>
+    body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: #fff; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    
+    /* --- TABS --- */
+    .tab-bar { display: flex; background: #111; border-bottom: 2px solid #333; }
+    .tab-btn { flex: 1; padding: 15px; background: #111; border: none; color: #888; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    .tab-btn:hover { background: #222; color: #fff; }
+    .tab-btn.active { background: #2a2a2a; color: #FE5C00; border-bottom: 4px solid #FE5C00; }
+
+    /* --- CONTENT AREA --- */
+    .content-area { flex: 1; position: relative; overflow-y: auto; padding: 20px; }
+    .tab-content { display: none; max-width: 1000px; margin: 0 auto; }
+    .tab-content.active { display: block; animation: fadeIn 0.3s; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* --- CONNECTION BAR --- */
+    .status-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #111; padding: 5px 15px; border-top: 1px solid #333; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; font-size: 0.85rem; color: #666; }
+    .dot { width: 10px; height: 10px; background: #f00; border-radius: 50%; display: inline-block; margin-right: 8px; }
+    .dot.connected { background: #0f0; box-shadow: 0 0 8px #0f0; }
+
+    /* --- GAME CONTROLS --- */
+    .dashboard { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 20px; }
+    .panel { background: #2a2a2a; padding: 20px; border-radius: 8px; text-align: center; border: 1px solid #444; }
+    .score-large { font-size: 5rem; font-weight: bold; line-height: 1; display: block; margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+    
+    /* BUTTON STYLES */
+    button.game-btn { cursor: pointer; padding: 15px; font-weight: bold; font-size: 1.1rem; border-radius: 4px; border: none; color: white; transition: 0.1s; width: 100%; }
+    button.game-btn:hover { filter: brightness(1.2); transform: translateY(-1px); }
+    button.game-btn:active { transform: scale(0.96); filter: brightness(0.9); }
+    
+    .btn-add { background: #2e7d32; }   /* Green for + */
+    .btn-sub { background: #c62828; }   /* Red for - */
+    .btn-foul { background: #ef6c00; color: #fff; margin-top: 8px; padding: 8px; }
+    
+    /* CLOCK BUTTONS */
+    .btn-clock { width: 48%; margin: 5px 1%; }
+    .btn-start { background: #009900; color: #fff; box-shadow: 0 4px 0 #006600; } 
+    .btn-stop { background: #cc0000; color: #fff; box-shadow: 0 4px 0 #990000; }
+    .btn-start:active, .btn-stop:active { box-shadow: 0 2px 0 #000 inset; transform: translateY(2px); }
+
+    #clock-input { font-size: 3rem; width: 100%; text-align: center; background: #000; color: #0f0; border: 2px solid #555; border-radius: 4px; margin-bottom: 10px; }
+    .clock-active { border-color: #00bf16 !important; color: #fff !important; box-shadow: 0 0 15px rgba(0,255,0,0.2); }
+
+    /* --- CONFIG FORM --- */
+    .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .config-group { background: #2a2a2a; padding: 20px; border-radius: 8px; border: 1px solid #444; }
+    .config-group h3 { margin-top: 0; color: #FE5C00; border-bottom: 1px solid #444; padding-bottom: 10px; }
+    
+    .form-row { margin-bottom: 12px; text-align: left; }
+    .form-row label { display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 4px; }
+    .form-row input[type="text"] { width: 100%; padding: 8px; background: #111; border: 1px solid #555; color: white; border-radius: 4px; box-sizing: border-box; }
+    .form-row input[type="file"] { width: 100%; padding: 5px; background: #111; border: 1px solid #555; border-radius: 4px; box-sizing: border-box; font-size: 0.8rem; }
+    .form-row input[type="color"] { width: 100%; height: 40px; border: none; padding: 0; cursor: pointer; }
+
+    .action-row { margin-top: 20px; display: flex; gap: 10px; }
+    .btn-apply { background: #1565c0; color: white; padding: 12px; border: none; border-radius: 4px; flex: 2; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: 0.2s; }
+    .btn-apply:hover { background: #1976d2; }
+    .btn-save { background: #444; color: white; padding: 12px; border: none; border-radius: 4px; flex: 1; cursor: pointer; transition: 0.2s; }
+    .btn-save:hover { background: #555; }
+    .btn-load { background: #333; color: #aaa; padding: 12px; border: 1px solid #555; border-radius: 4px; flex: 1; cursor: pointer; transition: 0.2s; }
+    .btn-load:hover { background: #444; color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="tab-bar">
+    <button class="tab-btn active" onclick="showTab('game')">SCOREBOARD CONTROL</button>
+    <button class="tab-btn" onclick="showTab('config')">GAME SETUP & LOGOS</button>
+</div>
+
+<div class="content-area">
+    <div id="tab-game" class="tab-content active">
+        <div class="dashboard">
+            <div class="panel">
+                <h2 id="lbl-home-name">HOME</h2>
+                <span id="h-score" class="score-large">0</span>
+                <div class="btn-grid">
+                    <button class="game-btn btn-sub" onclick="modScore('home', -1)">-1</button>
+                    <button class="game-btn btn-add" onclick="modScore('home', 1)">+1</button>
+                    <button class="game-btn btn-add" onclick="modScore('home', 2)">+2</button>
+                    <button class="game-btn btn-add" onclick="modScore('home', 3)">+3</button>
+                </div>
+                <div style="margin-top:15px; color:#aaa;">Fouls: <span id="h-fouls">0</span></div>
+                <button class="game-btn btn-foul" onclick="modFouls('home', 1)">+ FOUL</button>
+                <button class="game-btn btn-sub" style="padding:5px; margin-top:5px; font-size:0.8rem; background:#444;" onclick="modFouls('home', -1)">- Adj</button>
+            </div>
+
+            <div class="panel">
+                <h2>CLOCK</h2>
+                <input type="text" id="clock-input" value="8:00" onchange="manualClockEdit()">
+                <div>
+                    <button class="game-btn btn-start btn-clock" onclick="toggleClock(true)">START</button>
+                    <button class="game-btn btn-stop btn-clock" onclick="toggleClock(false)">STOP</button>
+                </div>
+                <select id="period-select" onchange="sendUpdate()" style="width:100%; padding:10px; margin-top:15px; background:#111; color:#fff; border:1px solid #555;">
+                    <option value="1">1st Period</option>
+                    <option value="2">2nd Period</option>
+                    <option value="HALF">Halftime</option>
+                    <option value="3">3rd Period</option>
+                    <option value="4">4th Period</option>
+                    <option value="FINAL">FINAL</option>
+                </select>
+            </div>
+
+            <div class="panel">
+                <h2 id="lbl-away-name">AWAY</h2>
+                <span id="a-score" class="score-large">0</span>
+                <div class="btn-grid">
+                    <button class="game-btn btn-sub" onclick="modScore('away', -1)">-1</button>
+                    <button class="game-btn btn-add" onclick="modScore('away', 1)">+1</button>
+                    <button class="game-btn btn-add" onclick="modScore('away', 2)">+2</button>
+                    <button class="game-btn btn-add" onclick="modScore('away', 3)">+3</button>
+                </div>
+                <div style="margin-top:15px; color:#aaa;">Fouls: <span id="a-fouls">0</span></div>
+                <button class="game-btn btn-foul" onclick="modFouls('away', 1)">+ FOUL</button>
+                <button class="game-btn btn-sub" style="padding:5px; margin-top:5px; font-size:0.8rem; background:#444;" onclick="modFouls('away', -1)">- Adj</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-config" class="tab-content">
+        <div class="action-row" style="margin-bottom:20px;">
+            <button class="btn-load" onclick="document.getElementById('file-load-json').click()">📂 Load Config File</button>
+            <input type="file" id="file-load-json" accept=".json" style="display:none" onchange="loadConfigFile(this)">
+        </div>
+
+        <div class="config-grid">
+            <div class="config-group">
+                <h3>Home Team</h3>
+                <div class="form-row"><label>Name</label><input type="text" id="cfg-home-name" value="HOME"></div>
+                <div class="form-row"><label>Record</label><input type="text" id="cfg-home-record" value="0-0"></div>
+                <div class="form-row">
+                    <label>Logo (Click to Browse)</label>
+                    <input type="file" id="cfg-home-logo" accept="image/*" onchange="handleLogoSelect('home')">
+                </div>
+            </div>
+
+            <div class="config-group">
+                <h3>Away Team</h3>
+                <div class="form-row"><label>Name</label><input type="text" id="cfg-away-name" value="AWAY"></div>
+                <div class="form-row"><label>Record</label><input type="text" id="cfg-away-record" value="0-0"></div>
+                <div class="form-row">
+                    <label>Logo (Click to Browse)</label>
+                    <input type="file" id="cfg-away-logo" accept="image/*" onchange="handleLogoSelect('away')">
+                </div>
+            </div>
+
+            <div class="config-group" style="grid-column: span 2;">
+                <h3>Broadcast Settings</h3>
+                <div style="display:flex; gap:15px;">
+                    <div class="form-row" style="flex:1"><label>Game Level/Title</label><input type="text" id="cfg-level" value="BOYS VARSITY"></div>
+                    <div class="form-row" style="flex:1"><label>YouTube Handle</label><input type="text" id="cfg-youtube" value="@Channel"></div>
+                </div>
+                <div style="display:flex; gap:15px;">
+                    <div class="form-row" style="flex:1"><label>Accent Color</label><input type="color" id="cfg-accent" value="#FE5C00"></div>
+                    <div class="form-row" style="flex:1"><label>Background Color</label><input type="color" id="cfg-bg" value="#141414"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-row">
+            <button class="btn-apply" onclick="applyConfig()">✅ APPLY TO OVERLAY</button>
+            <button class="btn-save" onclick="saveConfigToFile()">💾 Download JSON</button>
+        </div>
+        <p style="text-align:center; color:#555; font-size:0.8rem;">* "Download JSON" saves a file. Replace 'gameconfig.json' in your folder to make changes permanent.</p>
+    </div>
+</div>
+
+<div class="status-bar">
+    <div>
+        <span id="dot" class="dot"></span>
+        <span id="status-text">Connecting...</span>
+    </div>
+    <div id="last-sent" style="color:#444;"></div>
+</div>
+
+<script>
+    // === CONFIG ===
+    const OBS_PORT = 4455;
+    const OBS_PASSWORD = 'ScoreboardRemote';
+    // ==============
+
+    let obs;
+    let isConnected = false;
+    let timerInterval = null;
+    let totalSeconds = 480;
+    
+    let homeLogoData = ""; 
+    let awayLogoData = "";
+
+    const gameState = {
+        home_score: 0, away_score: 0, home_fouls: 0, away_fouls: 0,
+        clock: "8:00", period: "1"
+    };
+
+    // --- TABS ---
+    function showTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById('tab-' + tabId).classList.add('active');
+        const btns = document.querySelectorAll('.tab-btn');
+        if(tabId === 'game') btns[0].classList.add('active');
+        else btns[1].classList.add('active');
+    }
+
+    // --- CONNECT ---
+    async function connectOBS() {
+        if(typeof OBSWebSocket === 'undefined') return;
+        if(!obs) obs = new OBSWebSocket();
+        try {
+            await obs.connect(`ws://localhost:${OBS_PORT}`, OBS_PASSWORD);
+            isConnected = true;
+            document.getElementById('dot').classList.add('connected');
+            document.getElementById('status-text').innerText = "Connected to OBS";
+            document.getElementById('status-text').style.color = "#ccc";
+            sendUpdate();
+        } catch(e) {
+            isConnected = false;
+            document.getElementById('dot').classList.remove('connected');
+            document.getElementById('status-text').innerText = "Connection Failed";
+        }
+    }
+    window.onload = connectOBS;
+
+    // --- GAME LOGIC ---
+    function sendUpdate() {
+        if(!isConnected || !obs) return;
+        gameState.clock = document.getElementById('clock-input').value;
+        gameState.period = document.getElementById('period-select').value;
+        
+        obs.call('BroadcastCustomEvent', {
+            eventData: { type: 'MANUAL_SCORE_UPDATE', data: gameState }
+        });
+    }
+
+    function modScore(team, amt) {
+        if(team==='home') gameState.home_score = Math.max(0, gameState.home_score+amt);
+        if(team==='away') gameState.away_score = Math.max(0, gameState.away_score+amt);
+        updateUI(); sendUpdate();
+    }
+    function modFouls(team, amt) {
+        if(team==='home') gameState.home_fouls = Math.max(0, gameState.home_fouls+amt);
+        if(team==='away') gameState.away_fouls = Math.max(0, gameState.away_fouls+amt);
+        updateUI(); sendUpdate();
+    }
+    function updateUI() {
+        document.getElementById('h-score').innerText = gameState.home_score;
+        document.getElementById('a-score').innerText = gameState.away_score;
+        document.getElementById('h-fouls').innerText = gameState.home_fouls;
+        document.getElementById('a-fouls').innerText = gameState.away_fouls;
+    }
+
+    // --- CLOCK ---
+    function parseTime(t) { if(!t.includes(':')) return parseInt(t)*60; const p=t.split(':'); return (parseInt(p[0])*60)+parseInt(p[1]); }
+    function formatTime(s) { const m=Math.floor(s/60); const sc=s%60; return `${m}:${sc.toString().padStart(2,'0')}`; }
+    function manualClockEdit() { totalSeconds = parseTime(document.getElementById('clock-input').value); sendUpdate(); }
+    function toggleClock(run) {
+        const input = document.getElementById('clock-input');
+        if(run) {
+            if(timerInterval) return;
+            manualClockEdit();
+            input.classList.add('clock-active');
+            timerInterval = setInterval(() => {
+                if(totalSeconds > 0) { totalSeconds--; input.value = formatTime(totalSeconds); sendUpdate(); }
+                else { toggleClock(false); }
+            }, 1000);
+        } else {
+            if(timerInterval) clearInterval(timerInterval);
+            timerInterval = null;
+            input.classList.remove('clock-active');
+            sendUpdate();
+        }
+    }
+
+    // --- CONFIG LOGIC ---
+    
+    function handleLogoSelect(team) {
+        const fileInput = document.getElementById(`cfg-${team}-logo`);
+        const file = fileInput.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            if(team === 'home') homeLogoData = e.target.result;
+            if(team === 'away') awayLogoData = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function loadConfigFile(input) {
+        const file = input.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const cfg = JSON.parse(e.target.result);
+                document.getElementById('cfg-home-name').value = cfg.homeName || "";
+                document.getElementById('cfg-home-record').value = cfg.homeRecord || "";
+                document.getElementById('cfg-away-name').value = cfg.opponentName || "";
+                document.getElementById('cfg-away-record').value = cfg.opponentRecord || "";
+                document.getElementById('cfg-level').value = cfg.gameLevel || "";
+                document.getElementById('cfg-youtube').value = cfg.youtubeHandle || "";
+                document.getElementById('cfg-accent').value = cfg.accentColor || "#FE5C00";
+                document.getElementById('cfg-bg').value = cfg.backgroundColor || "#141414";
+                document.getElementById('lbl-home-name').innerText = cfg.homeName;
+                document.getElementById('lbl-away-name').innerText = cfg.opponentName;
+                alert("Configuration Loaded!");
+            } catch(err) { alert("Invalid JSON file"); }
+        };
+        reader.readAsText(file);
+    }
+
+    function applyConfig() {
+        if(!isConnected) { alert("Not connected to OBS!"); return; }
+        const configData = {
+            homeName: document.getElementById('cfg-home-name').value,
+            homeRecord: document.getElementById('cfg-home-record').value,
+            homeLogo: homeLogoData || null, 
+            opponentName: document.getElementById('cfg-away-name').value,
+            opponentRecord: document.getElementById('cfg-away-record').value,
+            opponentLogo: awayLogoData || null,
+            gameLevel: document.getElementById('cfg-level').value,
+            youtubeHandle: document.getElementById('cfg-youtube').value,
+            accentColor: document.getElementById('cfg-accent').value,
+            backgroundColor: document.getElementById('cfg-bg').value
+        };
+        document.getElementById('lbl-home-name').innerText = configData.homeName;
+        document.getElementById('lbl-away-name').innerText = configData.opponentName;
+        obs.call('BroadcastCustomEvent', {
+            eventData: { type: 'CONFIG_UPDATE', data: configData }
+        });
+        alert("Sent to Overlay!");
+    }
+
+    function saveConfigToFile() {
+        const configData = {
+            homeName: document.getElementById('cfg-home-name').value,
+            homeRecord: document.getElementById('cfg-home-record').value,
+            homeLogo: "logos/bclogo.png", 
+            opponentName: document.getElementById('cfg-away-name').value,
+            opponentRecord: document.getElementById('cfg-away-record').value,
+            opponentLogo: "logos/school_logo.png",
+            gameLevel: document.getElementById('cfg-level').value,
+            youtubeHandle: document.getElementById('cfg-youtube').value,
+            accentColor: document.getElementById('cfg-accent').value,
+            backgroundColor: document.getElementById('cfg-bg').value
+        };
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(configData, null, 2));
+        const a = document.createElement('a');
+        a.href = dataStr;
+        a.download = "gameconfig.json";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    }
+</script>
+</body>
+</html>
