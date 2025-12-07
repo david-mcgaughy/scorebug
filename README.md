@@ -3,7 +3,7 @@
 
 A professional, broadcast-ready HTML scorebug designed for OBS Studio. This system offers a hybrid workflow: use **Scoreboard OCR** for fully automated data integration, or use the included **Control Dashboard** for manual scoring and live configuration.
 
-![Scoreboard Preview](https://www.youtube.com/watch?v=_Wrxi70f71Q&t=7327s) 
+![Scoreboard Preview] https://www.youtube.com/watch?v=_Wrxi70f71Q&t=7327s
 ## ✨ Features
 * **Hybrid Data Source:** Seamlessly switches between automated OCR data and manual input.
 * **Manual Control Dashboard:** A browser-based interface (`control.html`) to control the clock, scores, fouls, and game configuration via OBS WebSockets.
