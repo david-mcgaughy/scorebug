@@ -1,7 +1,8 @@
-# 🏀 OBS HTML Scoreboard System
+# 🏀 High School Basketball Scorebug
+An HTML Scoreboard System for use with OBS
 ### Hybrid OCR Automation + Manual Control + Live Ticker
 
-A professional, broadcast-ready HTML scorebug designed for OBS Studio. This system offers a hybrid workflow: use **Scoreboard OCR** for fully automated data integration, or use the included **Control Dashboard** for manual scoring and live configuration.
+A professional, broadcast-ready HTML scorebug designed for use with OBS Studio. This system offers a hybrid workflow: use **Scoreboard OCR** for fully automated data integration, or use the included **Control Dashboard** for manual scoring and live configuration.
 
 [Scoreboard Preview]
 
